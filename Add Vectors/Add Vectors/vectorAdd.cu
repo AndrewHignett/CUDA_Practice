@@ -8,7 +8,10 @@
 
 __global__ void vectorAdd(float *out, float *a, float *b, int n)
 {
-	for (int i = 0; i < n; i++)
+	//Edit the for loop to iterate dependent on the thread
+	int index = threadIdx.x;
+	int stepSize = blockDim.x;
+	for (int i = index; i < n; i+= stepSize)
 	{
 		out[i] = a[i] + b[i];
 	}
@@ -40,9 +43,8 @@ int main()
 	cudaMemcpy(d_b, b, sizeof(float) * N, cudaMemcpyHostToDevice);
 	//Allocate device memory for out
 	cudaMalloc((void**)&d_out, sizeof(float) * N);
-	//Transfer from host to device memory
-	//cudaMemcpy(d_out, out, sizeof(float) * N, cudaMemcpyHostToDevice);
-	vectorAdd<<<1,1>>>(d_out, d_a, d_b, N);
+	//Run function in parallel in 1024 threads
+	vectorAdd<<<1,1024>>>(d_out, d_a, d_b, N);
 	cudaMemcpy(out, d_out, sizeof(float) * N, cudaMemcpyDeviceToHost);
 	cudaFree(d_a);
 	cudaFree(d_b);
