@@ -4,16 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define N 100000000
+#define N 1000000000
 
 __global__ void vectorAdd(float *out, float *a, float *b, int n)
 {
-	//Edit the for loop to iterate dependent on the thread
-	int index = threadIdx.x;
-	int stepSize = blockDim.x;
-	for (int i = index; i < n; i+= stepSize)
+	//Only calculate if the threadID refers to an existing element
+	int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+	if (threadID < n)
 	{
-		out[i] = a[i] + b[i];
+		out[threadID] = a[threadID] + b[threadID];
 	}
 	//no need to return anything since the contents of the memory location have been modified
 }
@@ -44,7 +43,7 @@ int main()
 	//Allocate device memory for out
 	cudaMalloc((void**)&d_out, sizeof(float) * N);
 	//Run function in parallel in 1024 threads
-	vectorAdd<<<1,1024>>>(d_out, d_a, d_b, N);
+	vectorAdd<<<56,1024>>>(d_out, d_a, d_b, N);
 	cudaMemcpy(out, d_out, sizeof(float) * N, cudaMemcpyDeviceToHost);
 	cudaFree(d_a);
 	cudaFree(d_b);
