@@ -20,12 +20,20 @@ __global__ void calculatePi(float *out)
 	
 	float x = float(1) /(blockCount*N);
 	float thisX = float(threadID) / (blockCount*N);
-	float y = sqrt(1 - thisX * thisX);
-	float area = y * x * 4;
-	printf("ThreadID: %d\nthisX: %f\nX: %f\nY: %f\nArea: %f\n", threadID, thisX, x, y, area);
+	float y;
+	float area = 0.0f;
+	//Increase the accuracy of the estimation by further splitting each thread rectangle into 3
+	int max = 3;
+	for (int i = 0; i < max; i++)
+	{
+		thisX += i * (x/ max);
+		y = sqrt(1 - thisX * thisX);
+		area += y * (x / max) * 4;
+	}
 	cache[threadID] = area;
-	__syncthreads();
 	
+	__syncthreads();	
+
 	if (threadIdx.x == 0)
 	{
 		float sum = 0.0;
@@ -33,6 +41,7 @@ __global__ void calculatePi(float *out)
 		{
 			sum += cache[i];
 		}
+		
 		*out = sum;
 	}
 }
@@ -42,7 +51,7 @@ int main()
 	float out, *d_out;
 	cudaMalloc((void**)&d_out, sizeof(float));
 	cudaMemcpy(d_out, &out, sizeof(float), cudaMemcpyHostToDevice);
-	//Parallel pi calculation, single block
+	//Parallel pi calculation
 	calculatePi<<<blockCount, N >>>(d_out);
 	cudaMemcpy(&out, d_out, sizeof(float), cudaMemcpyDeviceToHost);
 	printf("%f\n", out);
