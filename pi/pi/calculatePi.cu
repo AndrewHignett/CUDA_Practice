@@ -7,6 +7,8 @@
 #define N 1024
 #define blockCount 1
 
+
+//http://cacs.usc.edu/education/cs596/src/cuda/pi.cu
 __global__ void calculatePi(float *out)
 {
 	//Shared memeory for sum, only works with a blockCount of 1
