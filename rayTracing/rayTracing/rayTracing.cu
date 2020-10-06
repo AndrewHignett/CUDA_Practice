@@ -14,23 +14,24 @@ using namespace cv;
 using namespace std;
 
 class camera {
+public:
 	//Focal point
 	float focalP[3];
 	//Focal length
 	float focalL;
-	int window[2] = { 1 , 0 };
+	float window[2] = { 1 , 0 };
 	float up[3];
 	float right[3];
 	float forwards[3];
 	float topLeft[3];
 	float pixelSize[2];
-public:
+
 	camera(float c_focalP[], float c_focalL, int x, int y, float c_up[], float c_right[], float c_forwards[]) {
 		for (int i = 0; i < 3; i++) {
 			focalP[i] = c_focalP[i];
 		}
 		focalL = c_focalL;
-		window[1] = x / y;
+		window[1] = (float)x / (float)y;
 		for (int i = 0; i < 3; i++) {
 			up[i] = c_up[i];
 		}
@@ -40,11 +41,15 @@ public:
 		for (int i = 0; i < 3; i++) {
 			forwards[i] = c_forwards[i];
 		}
-		pixelSize[0] = window[1] / y;
-		pixelSize[1] = window[2] / x;
+		pixelSize[0] = window[0] / (float)y;
+		pixelSize[1] = window[1] / (float)x;
 		for (int i = 0; i < 3; i++) {
-			topLeft[i] = focalP[i] + focalL*forwards[i] + window[1]*up[i] - window[2]*right[i] - pixelSize[1]*up[i] + pixelSize[2]*right[i];
+			topLeft[i] = focalP[i] + focalL*forwards[i] + window[0]*up[i] - window[1]*right[i] - pixelSize[0]*up[i] + pixelSize[1]*right[i];
+			
 		}
+		printf("%d %d\n", x, y);
+		printf("%f %f\n", window[0], window[1]);
+		printf("%f %f\n", pixelSize[0], pixelSize[1]);
 	}
 };
 
@@ -75,10 +80,10 @@ class sphere {
 	float diffuseInt;
 	float diffuse[3];
 	float specularInt;
-	float specular;
+	float specular[3];
 	float ambientInt;
 public:
-	sphere(float s_radius, float s_centre[3], float s_colour[3], float s_diffuseInt, float s_specularInt, float specular) {
+	sphere(float s_radius, float s_centre[3], float s_colour[3], float s_diffuseInt, float s_specularInt, float specular[3]) {
 		radius = s_radius;
 		for (int i = 0; i < 3; i++) {
 			centre[i] = s_centre[i];
@@ -94,19 +99,45 @@ public:
 		specular = specular;
 		ambientInt = 1 - specularInt - diffuseInt;
 	}
+
+	__device__ float sphereIntersect() {
+		return 1.0;
+	}
 };
 
-__device__ int* getColour()
+__device__ float* rayTrace(sphere *spheres, int *sphereCount, float *rayPoint, float *rayDirection, light *lights, int *lightCount)
 {
-
+	float backgroundColour[3] = { 51, 51, 51 };
+	float closestDitance = INFINITY;
+	int closestIndex = -1;
+	for (int i = 0; i < *sphereCount; i++)
+	{
+		printf("%f\n", spheres[i].sphereIntersect());
+	}
 }
 
-__global__ void getPixel(float *out, camera *cam, light *light, int *x, int *y)
+//lightCount and sphereCount could maybe be replaced with sizeof(spheres)/sizeof(sphere)
+__global__ void getPixel(float *out, camera *cam, light *lights, int *x, int *y, sphere *spheres, int *lightCount, int *sphereCount)
 {
 	int c = blockIdx.x*blockDim.x + threadIdx.x;
 	int r = blockIdx.y*blockDim.y + threadIdx.y;
 	if ((c < *x) && (r < *y))
 	{
+		float givenPixel[3];
+		float rayPoint[3];
+		float rayDirection[3];
+		for (int i = 0; i < 3; i++)
+		{
+			givenPixel[i] = cam->topLeft[i] - r * cam->pixelSize[0] * cam->up[i] + c * cam->pixelSize[1] * cam->right[i];
+			rayPoint[i] = cam->focalP[i];
+			rayDirection[i] = givenPixel[i] - rayPoint[i];
+		}
+		//Normalise the ray direction
+		float directionNorm = sqrtf(rayDirection[0] * rayDirection[0] + rayDirection[1] * rayDirection[1] + rayDirection[2] * rayDirection[2]);
+		rayDirection[0] = rayDirection[0] / directionNorm;
+		rayDirection[1] = rayDirection[1] / directionNorm;
+		rayDirection[2] = rayDirection[2] / directionNorm;
+		float *colour = rayTrace(spheres, sphereCount, rayPoint, rayDirection, lights, lightCount);
 		for (int i = 0; i < 3; i++)
 		{
 			float PLACEHOLDER = 128;
@@ -144,12 +175,15 @@ int main()
 	camera *camera1 = (camera*)malloc(sizeof(camera));
 	//camera
 	*camera1 = camera(focalP, focalL, *x, *y, up, right, forwards);
-	float lightDirection[] = { -2, 1, -3 };
-	float ambientInt = 0.2;
-	float localInt = 0.8;
-	light *light1 = (light*)malloc(sizeof(light));
+	float lightDirection1[] = { -2, 1, -3 };
+	float ambientInt1 = 0.2;
+	float localInt1 = 0.8;
+	int *lightCount = (int*)malloc(sizeof(int));
+	*lightCount = 1;
+	light *lights = (light*)malloc(*lightCount * sizeof(light));
 	//light
-	*light1 = light(lightDirection, ambientInt, localInt);
+	light light1 = light(lightDirection1, ambientInt1, localInt1);
+	*lights = { light1 };
 	//limited 1024
 	dim3 block(32, 32, 1);
 	dim3 grid;
@@ -166,31 +200,54 @@ int main()
 			}
 		}
 	}
-	int *d_x, *d_y;
+
+	float radius1 = 0.5;
+	float centre1[3] = {-0.5, 1, 1.5};
+	float colour1[3] = {255, 0, 0};
+	float diffuseInt1 = 0.8;
+	float specularInt1 = 0.2;
+	float specular1[3] = {255, 255, 255};
+	int *sphereCount = (int*)malloc(sizeof(int));
+	*sphereCount = 1;
+	sphere *spheres = (sphere*)malloc(*sphereCount * sizeof(sphere));
+	sphere sphere1 = sphere(radius1, centre1, colour1, diffuseInt1, specularInt1, specular1);
+	*spheres = { sphere1 };
+
+	int *d_x, *d_y, *d_lightCount, *d_sphereCount;
 	float *d_out;
 	camera *d_camera1;
-	light *d_light1;
+	light *d_lights;
+	sphere *d_spheres;
 	//allocate device memory for variables
 	cudaMalloc((void**)&d_x, sizeof(int));
 	cudaMalloc((void**)&d_y, sizeof(int));
 	cudaMalloc((void**)&d_out, *x * *y * 3 * sizeof(float));
 	cudaMalloc((void**)&d_camera1, sizeof(camera));
-	cudaMalloc((void**)&d_light1, sizeof(light));
+	cudaMalloc((void**)&d_lights, *lightCount * sizeof(light));
+	cudaMalloc((void**)&d_spheres, *sphereCount * sizeof(sphere));
+	cudaMalloc((void**)&d_lightCount, sizeof(int));
+	cudaMalloc((void**)&d_sphereCount, sizeof(int));
 	//transfer from host to device memory
 	cudaMemcpy(d_x, x, sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_y, y, sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_camera1, camera1, sizeof(camera), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_light1, light1, sizeof(light), cudaMemcpyHostToDevice);
-	getPixel<<<grid, block>>>(d_out, d_camera1, d_light1, d_x, d_y);
+	cudaMemcpy(d_lights, lights, *lightCount * sizeof(light), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_spheres, spheres, *sphereCount * sizeof(sphere), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_lightCount, lightCount, sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_sphereCount, sphereCount, sizeof(int), cudaMemcpyHostToDevice);
+	getPixel<<<grid, block>>>(d_out, d_camera1, d_lights, d_x, d_y, d_spheres, d_lightCount, d_sphereCount);
 	//transfer output from device memory to host memory
 	cudaMemcpy(out, d_out, *x * *y * 3 * sizeof(float), cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
 	//free device memory
 	cudaFree(d_camera1);
-	cudaFree(d_light1);
+	cudaFree(d_lights);
 	cudaFree(d_x);
 	cudaFree(d_y);
 	cudaFree(d_out);
+	cudaFree(d_spheres);
+	cudaFree(d_lightCount);
+	cudaFree(d_sphereCount);
 	//Opencv documentation approach to saving an image
 	Mat mat(*y, *x, CV_8UC4);
 	makeImage(mat, out, y);
@@ -209,7 +266,10 @@ int main()
 	free(x);
 	free(y);
 	free(camera1);
-	free(light1);
+	free(lights);
 	free(out);
+	free(spheres);
+	free(lightCount);
+	free(sphereCount);
 	return 0;
 }
