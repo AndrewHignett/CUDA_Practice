@@ -9,3 +9,4 @@ A set of tasks for my practice and learning of CUDA:
 5. Matrix Transpose
 6. Matrix Multiply
 7. Fourier Transform
+8. Ray Traced Renderer
