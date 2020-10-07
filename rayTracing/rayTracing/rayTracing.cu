@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <vector>
+#include <list>
+
 
 #include <opencv2\opencv.hpp>
 #include <opencv2\core\core_c.h>
@@ -165,6 +167,7 @@ public:
 	}
 
 	__device__ float* getPixelColour(float *rayPoint, float closestDistance, float *rayDirection, light *lights, int *lightCount, sphere *spheres, int *sphereCount, float *location, int closestIndex) {
+		/*
 		float newRayPoint[3];
 		for (int i = 0; i < 3; i++)
 		{
@@ -178,19 +181,20 @@ public:
 		for (int i = 0; i < 3; i++)
 		{
 			normal[i] = normal[i] / norm;
-		}
+		}*/
 		float pixelColour[3];
 		for (int i = 0; i < 3; i++)
 		{
 			pixelColour[i] = colour[i] * ambientInt;
 		}
+		/*
 		for (int lightNumber = 0; lightNumber < *lightCount; lightNumber++)
 		{
 			
 			light *thisLight = &lights[lightNumber];
 			float *lightDirection = thisLight->direction;
 			
-			/*
+			
 			for (int i = 0; i < *sphereCount; i++)
 			{
 				//check for intersection of light bounce with spheres, for shadowing, including self-shadowing
@@ -217,7 +221,7 @@ public:
 					//Add on if not diffuse for any given light
 				}
 			}
-			*/
+			
 			//notShadowed(sphereCount, spheres, closestIndex, location, lightDirection, rayPoint, rayDirection);
 			
 			
@@ -239,6 +243,7 @@ public:
 				pixelColour[i] += thisSpecular[i];
 			}
 		}
+		*/
 		return pixelColour;
 	}
 
@@ -253,6 +258,121 @@ public:
 		return position;
 	}
 };
+
+__device__ float* addLights(int *lightCount, light *thisLight, int *sphereCount, sphere *spheres, float *rayPoint, float *rayDirection, float *pixelColour)
+{
+	float backgroundColour[3] = { 51, 51, 51 };
+	float closestDistance = INFINITY;
+	int closestIndex = -1;
+	for (int i = 0; i < *sphereCount; i++)
+	{
+		float t = spheres[i].sphereIntersect(rayPoint, rayDirection);
+		if ((0 < t) && (t < closestDistance))
+		{
+			closestDistance = t;
+			closestIndex = i;
+		}
+	}
+	if (closestIndex == -1)
+	{
+		return backgroundColour;
+	}
+	float *location = spheres[closestIndex].getGlobalLocation(rayPoint, closestDistance, rayDirection);
+
+
+
+
+	float *centre = spheres[closestIndex].centre;
+	float diffuseInt = spheres[closestIndex].diffuseInt;
+	float *diffuse = spheres[closestIndex].diffuse;
+	float specularInt = spheres[closestIndex].specularInt;
+	float *specular = spheres[closestIndex].specular;
+	//float newRayPoint[3];
+	float normal[3];
+	for (int i = 0; i < 3; i++)
+	{
+		normal[i] = rayPoint[i] - centre[i] + rayDirection[i]*closestDistance;
+	}
+	//float x = newRayPoint[0] + closestDistance * rayDirection[0];
+	//float y = newRayPoint[1] + closestDistance * rayDirection[1];
+	//float z = newRayPoint[2] + closestDistance * rayDirection[2];
+	//float normal = { x, y, z };
+	//float norm = sqrtf(x * x + y * y + z * z);
+	float norm = sqrtf(normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2]);
+	for (int i = 0; i < 3; i++)
+	{
+		normal[i] = normal[i] / norm;
+	}
+	//Failed attempt at converting the lights array to a list, to make it iterable
+	/*
+	list<light> lst = (list<light>)lights;
+	std::list<light>::iterator it;
+	for (it = lights[0]; it != lights.end(); ++it) {
+		std::cout << it->direction;
+	}*/
+	//float *lightDirection = (lights)->direction;
+
+	float lightDirection[3];
+	thisLight->direction;
+	/*for (int lightNumber = 0; lightNumber < *lightCount; lightNumber++)
+	{
+		//float *lightDirection = (lights + lightNumber)->direction;
+		//light thisLight = *(lights + lightNumber);
+		//float *lightDirection = thisLight->direction;
+
+		
+		for (int i = 0; i < *sphereCount; i++)
+		{
+			//check for intersection of light bounce with spheres, for shadowing, including self-shadowing
+			float t = 0;
+			float newLocation[3];
+			if (i != closestIndex)
+			{
+				printf("%d\n", closestIndex);
+				//float tTest = spheres[i].sphereIntersect(rayPoint, rayDirection);
+				float tTest = 0;
+				if ((tTest > 0) && (tTest < INFINITY))
+				{
+
+					newLocation[0] = location[0] - lightDirection[0] / 1000;
+					newLocation[1] = location[1] - lightDirection[1] / 1000;
+					newLocation[2] = location[2] - lightDirection[2] / 1000;
+					//t = spheres[i].sphereIntersect(location, lightDirection);
+				}
+			}
+			if ((t > 0) && (t < INFINITY))
+			{
+				//If a t exists within this range for any mesh, then must be diffuse
+				//if diffuse for this light, leave pixelColour alone.
+				//Add on if not diffuse for any given light
+			}
+		}
+
+		//notShadowed(sphereCount, spheres, closestIndex, location, lightDirection, rayPoint, rayDirection);
+
+
+		float normLight[3];
+		float lightNormal = sqrtf(lightDirection[0] * lightDirection[0] + lightDirection[1] * lightDirection[1] + lightDirection[2] * lightDirection[2]);
+		float cos = dot(thisLight->direction, normal) / (lightNormal*norm);
+		float reflectionVector[3];
+		for (int i = 0; i < 3; i++)
+		{
+			pixelColour[i] += cos * diffuseInt*diffuse[i];
+			reflectionVector[i] = lightDirection[i] - 2 * normal[i] * dot(normal, lightDirection);
+		}
+		//Add specular
+		int n = 40;
+		float thisSpecular[3];
+		for (int i = 0; i < 3; i++)
+		{
+			thisSpecular[i] = specular[i] * specularInt*pow(dot(reflectionVector, rayDirection), n);
+			pixelColour[i] += thisSpecular[i];
+		}
+		
+	}*/
+	float end[3] = { 0, 0, 0 };
+	return end;
+}
 
 __device__ float* rayTrace(sphere *spheres, int *sphereCount, float *rayPoint, float *rayDirection, light *lights, int *lightCount)
 {
@@ -274,6 +394,7 @@ __device__ float* rayTrace(sphere *spheres, int *sphereCount, float *rayPoint, f
 	}
 	float *location = spheres[closestIndex].getGlobalLocation(rayPoint, closestDistance, rayDirection);
 	float *tempColour = spheres[closestIndex].getPixelColour(rayPoint, closestDistance, rayDirection, lights, lightCount, spheres, sphereCount, location, closestIndex);
+	
 	/*
 	for (int i = 0; i < *sphereCount; i++)
 	{
@@ -285,6 +406,83 @@ __device__ float* rayTrace(sphere *spheres, int *sphereCount, float *rayPoint, f
 
 	}
 	*/
+	//float *finalColour = addLights(lightCount, lights, sphereCount, spheres, closestIndex, location, rayPoint, closestDistance, rayDirection, tempColour);
+	float *centre = spheres[closestIndex].centre;
+	float initNormal[3];
+	for (int i = 0; i < 3; i++)
+	{
+		//newRayPoint[i] = rayPoint[i] - centre[i];
+		initNormal[i] = rayPoint[i] - centre[i] + closestDistance*rayDirection[i];
+	}
+	//printf("%f\n", newRayPoint[0] + closestDistance*rayDirection[0]);	
+	
+	//printf("%f\n", newRayPoint[2] + closestDistance * rayDirection[2]);
+	//float x = newRayPoint[0] + closestDistance * rayDirection[0];
+	//float y = newRayPoint[1] + closestDistance * rayDirection[1];
+	//float z = newRayPoint[2] + closestDistance * rayDirection[2];
+	float norm = sqrtf(initNormal[0] * initNormal[0] + initNormal[1] * initNormal[1] + initNormal[2] * initNormal[2]);
+	float normal[3];
+	for (int i = 0; i < 3; i++)
+	{
+		normal[i] = initNormal[i] / norm;
+	}
+	for (int lightNumber = 0; lightNumber < *lightCount; lightNumber++)
+	{
+		//printf("%d\n", closestIndex);
+		light *thisLight = &lights[lightNumber];
+		float *lightDirection = thisLight->direction;
+		
+		for (int i = 0; i < *sphereCount; i++)
+		{
+			//check for intersection of light bounce with spheres, for shadowing, including self-shadowing
+			float t = 0;
+			if (i != closestIndex)
+			{
+				//printf("%d\n", closestIndex);
+				float tTest = spheres[i].sphereIntersect(rayPoint, rayDirection);
+				//float tTest = 0;
+				float *newLocation;
+				if ((tTest > 0) && (tTest < INFINITY))
+				{
+					newLocation[0] = location[0] - lightDirection[0] / 1000;
+					newLocation[1] = location[1] - lightDirection[1] / 1000;
+					newLocation[2] = location[2] - lightDirection[2] / 1000;
+					t = spheres[i].sphereIntersect(newLocation, lightDirection);
+				}
+			}
+			if ((t > 0) && (t < INFINITY))
+			{
+				//If a t exists within this range for any mesh, then must be diffuse
+				//if diffuse for this light, leave pixelColour alone.
+				//Add on if not diffuse for any given light
+			}
+		}
+
+		//notShadowed(sphereCount, spheres, closestIndex, location, lightDirection, rayPoint, rayDirection);
+		float diffuseInt = spheres[closestIndex].diffuseInt;
+		float *diffuse = spheres[closestIndex].diffuse;
+		float specularInt = spheres[closestIndex].specularInt;
+		float *specular = spheres[closestIndex].specular;
+		
+		float normLight[3];
+		
+		//float lightNormal = sqrtf(lightDirection[0] * lightDirection[0] + lightDirection[1] * lightDirection[1] + lightDirection[2] * lightDirection[2]);
+		//float cos = dot(thisLight->direction, normal) / (lightNormal*norm);
+		float reflectionVector[3];
+		/*for (int i = 0; i < 3; i++)
+		{
+			pixelColour[i] += cos * diffuseInt*diffuse[i];
+			reflectionVector[i] = lightDirection[i] - 2 * normal[i] * dot(normal, lightDirection);
+		}
+		//Add specular
+		int n = 40;
+		float thisSpecular[3];
+		for (int i = 0; i < 3; i++)
+		{
+			thisSpecular[i] = specular[i] * specularInt*pow(dot(reflectionVector, rayDirection), n);
+			pixelColour[i] += thisSpecular[i];
+		}*/
+	}
 	return tempColour;
 }
 
@@ -335,6 +533,48 @@ __global__ void getPixel(float *out, camera *cam, light *lights, int *x, int *y,
 	}
 }
 
+//image is the image without lighting
+__global__ void lighting(float *out, float *image, camera *cam, light *lights, int *x, int *y, sphere *spheres, int *lightCount, int *sphereCount)
+{
+	int c = blockIdx.x*blockDim.x + threadIdx.x;
+	int r = blockIdx.y*blockDim.y + threadIdx.y;
+	if ((c < *x) && (r < *y))
+	{
+		//printf("%d %d\n", c, r);
+		float givenPixel[3];
+		float rayPoint[3];
+		float rayDirection[3];
+		for (int i = 0; i < 3; i++)
+		{
+			givenPixel[i] = cam->topLeft[i] - r * cam->pixelSize[0] * cam->up[i] + c * cam->pixelSize[1] * cam->right[i];
+			rayPoint[i] = cam->focalP[i];
+			rayDirection[i] = givenPixel[i] - rayPoint[i];
+		}
+		//Normalise the ray direction
+		float directionNorm = sqrtf(rayDirection[0] * rayDirection[0] + rayDirection[1] * rayDirection[1] + rayDirection[2] * rayDirection[2]);
+		rayDirection[0] = rayDirection[0] / directionNorm;
+		rayDirection[1] = rayDirection[1] / directionNorm;
+		rayDirection[2] = rayDirection[2] / directionNorm;
+
+		//float *colour = rayTrace(spheres, sphereCount, rayPoint, rayDirection, lights, lightCount);
+		float pixelColour[3];
+		*(pixelColour) = *(image + c * *y * 3 + r * 3);
+		*(pixelColour + 1) = *(image + c * *y * 3 + r * 3 + 1);
+		*(pixelColour + 2) = *(image + c * *y * 3 + r * 3 + 2);
+		//float *colour = addLights(lightCount, lights, sphereCount, spheres, closestIndex, location, rayPoint, closestDistance, rayDirection, pixelColour);
+		float *colour;
+		//iterate over light array
+		for (int i = 0; i < *lightCount; i++)
+		{
+			colour = addLights(lightCount, lights, sphereCount, spheres, rayPoint, rayDirection, pixelColour);
+		}
+		for (int i = 0; i < 3; i++)
+		{
+			*(out + c * *y * 3 + r * 3 + i) = *(colour + i);
+		}
+	}
+}
+
 void makeImage(Mat &mat, float *image, int *y)
 {
 	CV_Assert(mat.channels() == 4);
@@ -353,9 +593,9 @@ int main()
 {
 	//x and y swapped for priting mat
 	int *x = (int*)malloc(sizeof(int));
-	*x = 2160;
+	*x = 1080;
 	int *y = (int*)malloc(sizeof(int));
-	*y = 3840;
+	*y = 1920;
 	float focalP[3] = {0, 0, 0};
 	float focalL = 1;
 	float up[3] = { 0, 1, 0 };
@@ -394,8 +634,8 @@ int main()
 	float radius1 = 0.5;
 	float centre1[3] = {0, 0, 1.5};
 	float colour1[3] = {0, 0, 255};
-	float diffuseInt1 = 0.4;
-	float specularInt1 = 1;
+	float diffuseInt1 = 0.2;
+	float specularInt1 = 0.7;
 	float specular1[3] = {255, 255, 255};
 	int *sphereCount = (int*)malloc(sizeof(int));
 	*sphereCount = 1;
@@ -426,9 +666,40 @@ int main()
 	cudaMemcpy(d_lightCount, lightCount, sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_sphereCount, sphereCount, sizeof(int), cudaMemcpyHostToDevice);
 	getPixel<<<grid, block>>>(d_out, d_camera1, d_lights, d_x, d_y, d_spheres, d_lightCount, d_sphereCount);
+	
+	cudaDeviceSynchronize();
+
 	//transfer output from device memory to host memory
 	cudaMemcpy(out, d_out, *x * *y * 3 * sizeof(float), cudaMemcpyDeviceToHost);
+	//cudaDeviceReset();
+
+	
+	//cudaFree(d_out);
+	float *d_out2, *d_image;
+	cudaMalloc((void**)&d_out2, *x * *y * 3 * sizeof(float));
+	cudaMalloc((void**)&d_image, *x * *y * 3 * sizeof(float));
+	cudaMemcpy(d_image, out, *x * *y * 3 * sizeof(float), cudaMemcpyHostToDevice);
+
+	
+
+	//cudaMemcpy(d_out, out, *x * *y * 3 * sizeof(float), cudaMemcpyHostToDevice);
+	lighting<<<grid, block>>>(d_out2, d_image, d_camera1, d_lights, d_x, d_y, d_spheres, d_lightCount, d_sphereCount);
+	//lighting<<<1, 1>>>(d_out2, d_image, d_camera1, d_lights, d_x, d_y, d_spheres, d_lightCount, d_sphereCount);
+
 	cudaDeviceSynchronize();
+	//transfer output from device memory to host memory
+	cudaMemcpy(out, d_out2, *x * *y * 3 * sizeof(float), cudaMemcpyDeviceToHost);
+
+
+	for (int i = 0; i < *x; i++)
+	{
+		for (int j = 0; j < *y; j++)
+		{
+			//printf("%d %d %f %f %f\n", i, j, *(out + i * *y * 3 + j * 3), *(out + i * *y * 3 + j * 3 + 1), *(out + i * *y * 3 + j * 3 + 2));
+		}
+	}
+
+
 	//free device memory
 	cudaFree(d_camera1);
 	cudaFree(d_lights);
@@ -449,7 +720,6 @@ int main()
 	}
 	catch (runtime_error& ex) {
 		fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
-		return 1;
 	}
 	fprintf(stdout, "Saved PNG file with alpha data.\n");
 	//free host memory
